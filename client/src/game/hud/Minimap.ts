@@ -52,9 +52,11 @@ class Minimap extends HudComponent {
   private selfY = map / 2;
   private _minimapAccumulator: number = 0;
   private _minimapInterval: number = 67;
-  private _dotPositions: Map<string, { x: number, y: number, targetX: number, targetY: number, radius: number, isSelf: boolean }> = new Map();
+  private _dotPositions: Map<string, { x: number, y: number, targetX: number, targetY: number, radius: number, isSelf: boolean, trackerName: string | null }> = new Map();
   private dotLayer: Phaser.GameObjects.Container | null = null;
   private dotSprites: Phaser.GameObjects.Image[] = [];
+  private littleHankeyLabel: Phaser.GameObjects.Text | null = null;
+  private littleHankeyTwoLabel: Phaser.GameObjects.Text | null = null;
   private static readonly dotBakeR = 9;
 
   initialize() {
@@ -81,6 +83,16 @@ class Minimap extends HudComponent {
     this.crown = this.game.add.sprite(0, 0, 'crown').setScale(0.1);
     this.ensureDotTextures();
     this.dotLayer = this.game.add.container();
+    this.littleHankeyLabel = this.game.add.text(0, 0, 'littlehankeyONE', {
+      fontSize: 10, fontFamily: "'Saira', sans-serif", fontStyle: '700',
+      color: '#67f6ff', stroke: '#06151c', strokeThickness: 3,
+    }).setOrigin(0.5, 1.4).setVisible(false);
+    this.dotLayer.add(this.littleHankeyLabel);
+    this.littleHankeyTwoLabel = this.game.add.text(0, 0, 'littlehankeyTWO', {
+      fontSize: 10, fontFamily: "'Saira', sans-serif", fontStyle: '700',
+      color: '#ff73c6', stroke: '#1d0715', strokeThickness: 3,
+    }).setOrigin(0.5, 1.4).setVisible(false);
+    this.dotLayer.add(this.littleHankeyTwoLabel);
     this.mapContainer = this.game.add.container();
 
     this.pan = this.game.add.container(0, 0, [this.mapContainer, this.dotLayer, this.crown]);
@@ -146,6 +158,8 @@ class Minimap extends HudComponent {
     };
     bake('mmDotEnemy', 0xff0000);
     bake('mmDotSelf', 0xffffff);
+    bake('mmDotLittleHankey', 0x38f5ff);
+    bake('mmDotLittleHankeyTwo', 0xff4fb8);
   }
 
   private redrawFrame() {
@@ -389,15 +403,17 @@ class Minimap extends HudComponent {
         const targetX = (player.shape.x - map.x) * this.scaleX;
         const targetY = (player.shape.y - map.y) * this.scaleY;
         const isSelf = player.id === this.game.gameState.self.id;
+        const trackerName = player.name === 'littlehankeyONE' || player.name === 'littlehankeyTWO'
+          ? player.name : null;
         const scale = this.scaleX * (isSelf ? 3 : 2) * (map.scale || 1) * 1.5;
-        const dotRadius = player.shape.radius * scale;
+        const dotRadius = trackerName ? Math.max(4, player.shape.radius * scale) : player.shape.radius * scale;
         activeIds.add(id);
         const existing = this._dotPositions.get(id);
         if (existing) {
           existing.targetX = targetX; existing.targetY = targetY;
-          existing.radius = dotRadius; existing.isSelf = isSelf;
+          existing.radius = dotRadius; existing.isSelf = isSelf; existing.trackerName = trackerName;
         } else {
-          this._dotPositions.set(id, { x: targetX, y: targetY, targetX, targetY, radius: dotRadius, isSelf });
+          this._dotPositions.set(id, { x: targetX, y: targetY, targetX, targetY, radius: dotRadius, isSelf, trackerName });
         }
       }
       for (const id of this._dotPositions.keys()) {
@@ -414,6 +430,8 @@ class Minimap extends HudComponent {
     const R = Minimap.dotBakeR;
     const pool = this.dotSprites;
     let used = 0;
+    let littleHankeyDot: { x: number, y: number } | null = null;
+    let littleHankeyTwoDot: { x: number, y: number } | null = null;
 
     for (const [id, dot] of this._dotPositions) {
       dot.x += (dot.targetX - dot.x) * lerpRate;
@@ -432,7 +450,9 @@ class Minimap extends HudComponent {
         pool[used] = spr;
       }
       used++;
-      spr.setTexture(dot.isSelf ? 'mmDotSelf' : 'mmDotEnemy');
+      spr.setTexture(dot.isSelf ? 'mmDotSelf'
+        : dot.trackerName === 'littlehankeyONE' ? 'mmDotLittleHankey'
+        : dot.trackerName === 'littlehankeyTWO' ? 'mmDotLittleHankeyTwo' : 'mmDotEnemy');
       spr.setPosition(dot.x, dot.y);
       spr.setScale((dot.radius * zr) / R);
       spr.setVisible(true);
@@ -441,9 +461,27 @@ class Minimap extends HudComponent {
         this.selfY = dot.y;
         selfSprite = spr;
       }
+      if (dot.trackerName === 'littlehankeyONE') littleHankeyDot = dot;
+      if (dot.trackerName === 'littlehankeyTWO') littleHankeyTwoDot = dot;
     }
     for (let i = used; i < pool.length; i++) pool[i].setVisible(false);
     if (selfSprite) dotLayer.bringToTop(selfSprite);
+    if (this.littleHankeyLabel) {
+      this.littleHankeyLabel.setVisible(!!littleHankeyDot && !this.game.gameState.spectator.active);
+      if (littleHankeyDot) {
+        this.littleHankeyLabel.setPosition(littleHankeyDot.x, littleHankeyDot.y - 6 * zr);
+        this.littleHankeyLabel.setScale(zr);
+        dotLayer.bringToTop(this.littleHankeyLabel);
+      }
+    }
+    if (this.littleHankeyTwoLabel) {
+      this.littleHankeyTwoLabel.setVisible(!!littleHankeyTwoDot && !this.game.gameState.spectator.active);
+      if (littleHankeyTwoDot) {
+        this.littleHankeyTwoLabel.setPosition(littleHankeyTwoDot.x, littleHankeyTwoDot.y - 6 * zr);
+        this.littleHankeyTwoLabel.setScale(zr);
+        dotLayer.bringToTop(this.littleHankeyTwoLabel);
+      }
+    }
 
     if (leader && leaderDotVisible) {
       this.updateCrown(leader, dt);

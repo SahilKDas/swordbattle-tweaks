@@ -50,12 +50,15 @@ class Server {
       maxPayloadLength: 4096,
       maxBackpressure: 1024 * 1024,
       upgrade: (res, req, context) => {
+        let query = null;
+        try { query = new URLSearchParams(req.getQuery() || ''); } catch (e) { query = new URLSearchParams(); }
+        const botView = query.get('botv') === '1';
         const forwardedFor = req.getHeader('x-forwarded-for') || req.getHeader('cf-connecting-ip') || '';
         const ips = forwardedFor.split(',').map(i => i.trim());
         const ip = ips[0];
         if (this.maintenanceMode) {
           let secret = '';
-          try { secret = new URLSearchParams(req.getQuery() || '').get('secret') || ''; } catch (e) { secret = ''; }
+          try { secret = query.get('secret') || ''; } catch (e) { secret = ''; }
           const bypass = this.allowedIPs.includes(ip) || (secret.length > 0 && this.allowedSecrets.includes(secret));
           if (!bypass) {
             res.upgrade({ maintenance: true }, req.getHeader('sec-websocket-key'), req.getHeader('sec-websocket-protocol'), req.getHeader('sec-websocket-extensions'), context);
@@ -76,7 +79,7 @@ class Server {
           .filter(client => client.ip === ip).length;
 
         if (currentConnections >= this.maxConnectionsPerIP) {
-          res.upgrade({ id: uuidv4(), ip, tooManyConnections: true },
+          res.upgrade({ id: uuidv4(), ip, botView, tooManyConnections: true },
             req.getHeader('sec-websocket-key'),
             req.getHeader('sec-websocket-protocol'),
             req.getHeader('sec-websocket-extensions'), context,
@@ -92,7 +95,7 @@ class Server {
           return;
         }
 
-        res.upgrade({ id: uuidv4(), ip },
+        res.upgrade({ id: uuidv4(), ip, botView },
           req.getHeader('sec-websocket-key'),
           req.getHeader('sec-websocket-protocol'),
           req.getHeader('sec-websocket-extensions'), context,

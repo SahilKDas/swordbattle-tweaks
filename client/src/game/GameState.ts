@@ -101,6 +101,8 @@ class GameState {
   private skinIdleSince: Record<string, number> = {};
   static skinCap = 60;
   private static readonly skinIdleMs = 25000;
+  private readonly botView = window.location.pathname.replace(/\/+$/, '') === '/botv';
+  private botViewHitboxes: Phaser.GameObjects.Graphics | null = null;
 
   private _boundOnOpen: () => void;
   private _boundOnMessage: (data: any) => void;
@@ -293,7 +295,37 @@ class GameState {
     this.destroyed = true;
     this.payloadsQueue = [];
     this._pendingMessages = [];
+    this.botViewHitboxes?.destroy();
+    this.botViewHitboxes = null;
     Socket.close();
+  }
+
+  private drawBotViewHitboxes() {
+    if (!this.botView || !this.game.add) return;
+    const graphics = this.botViewHitboxes
+      || (this.botViewHitboxes = this.game.add.graphics().setDepth(10000));
+    graphics.clear();
+
+    for (const id in this.entities) {
+      const entity = this.entities[id];
+      const shape = entity?.shape;
+      if (!shape || entity.removed) continue;
+      const isViewedBot = entity.type === EntityTypes.Player && entity.name === 'littlehankeyTWO';
+      const color = isViewedBot ? 0x35f2ff : entity.type === EntityTypes.Player ? 0xff4f91 : 0xffd447;
+      graphics.lineStyle(isViewedBot ? 5 : 2, color, isViewedBot ? 1 : 0.8);
+
+      if (typeof shape.radius === 'number') {
+        graphics.strokeCircle(shape.x, shape.y, shape.radius);
+      } else if (Array.isArray(shape.points) && shape.points.length > 1) {
+        graphics.beginPath();
+        graphics.moveTo(shape.x + shape.points[0].x, shape.y + shape.points[0].y);
+        for (let i = 1; i < shape.points.length; i++) {
+          graphics.lineTo(shape.x + shape.points[i].x, shape.y + shape.points[i].y);
+        }
+        graphics.closePath();
+        graphics.strokePath();
+      }
+    }
   }
 
   onServerMessage(data: any) {
@@ -422,7 +454,8 @@ class GameState {
     if (data.mapData) {
       this.gameMap.updateMapData(this.detachSnapshot(data.mapData));
     }
-    if (data.spectator) {
+    const isBotView = window.location.pathname.replace(/\/+$/, '') === '/botv';
+    if (data.spectator && !isBotView) {
       if (!this.spectator.active) {
         this.spectator.enable();
       }
@@ -630,6 +663,7 @@ class GameState {
       }
     }
     pt = perfMark('cullLoop', pt);
+    this.drawBotViewHitboxes();
 
     this._chainTimestampPruneAccum += dt;
     if (this._chainTimestampPruneAccum > 5000) {

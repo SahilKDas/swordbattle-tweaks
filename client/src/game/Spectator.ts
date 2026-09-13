@@ -10,6 +10,7 @@ export class Spectator {
   active = false;
   initialized = false;
   zoom = 0.5;
+  private readonly botView = window.location.pathname.replace(/\/+$/, '') === '/botv';
 
   constructor(game: Game) {
     this.game = game;
@@ -20,6 +21,14 @@ export class Spectator {
     if (data.x !== undefined || data.y !== undefined) {
       const x = data.x !== undefined ? data.x : camera.centerX;
       const y = data.y !== undefined ? data.y : camera.centerY;
+      if (this.botView) {
+        // The target moves every server tick. Restarting a long camera pan for
+        // every update means it can never converge, so bot view follows exactly.
+        camera.stopFollow();
+        camera.centerOn(x, y);
+        this.initialized = true;
+        return;
+      }
       if (this.initialized) {
         camera.pan(x, y, 10000, Phaser.Math.Easing.Linear, true);
       } else {

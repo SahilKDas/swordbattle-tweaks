@@ -126,7 +126,8 @@ function App({ profileDesigner = false, hudDesigner = false }: { profileDesigner
 
   const scale = useScale(false);
   const [name, setName] = useState('');
-  const [gameStarted, setGameStarted] = useState(false);
+  const isBotView = window.location.pathname.replace(/\/+$/, '') === '/botv';
+  const [gameStarted, setGameStarted] = useState(isBotView);
   const gameStartedRef = useRef(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [modal, setModal] = useState<any>(null);

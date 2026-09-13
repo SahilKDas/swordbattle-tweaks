@@ -14,11 +14,13 @@ class Client {
     // this.ip = String.fromCharCode.apply(null, new Uint8Array(socket.getRemoteAddressAsText()));
 
     this.ip = socket.ip || String.fromCharCode.apply(null, new Uint8Array(socket.getRemoteAddressAsText()));
+    this.botView = socket.botView === true;
 
     console.log(`Client ${this.id} connected from ${this.ip} at ${Date.now()}`);
     this.token = '';
 
     this.spectator = new Spectator(this.game, this);
+    this.spectator.followNeuralPlayer = this.botView;
     this.server = null;
     this.player = null;
     this.captchaVerified = false;

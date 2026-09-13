@@ -97,7 +97,9 @@ module.exports = function (proxy, allowedHost) {
       // Paths with dots should still use the history fallback.
       // See https://github.com/facebook/create-react-app/issues/387.
       disableDotRule: true,
-      index: paths.publicUrlOrPath,
+      // A relative homepage resolves to "./" for builds, but the dev-server
+      // fallback requires an absolute document path for routes such as /botv.
+      index: '/index.html',
     },
     // `proxy` is run between `before` and `after` `webpack-dev-server` hooks
     proxy,

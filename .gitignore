@@ -1,4 +1,5 @@
 node_modules/
+server/.neural-training-tmp/
 
 # The server is a yarn project (server/yarn.lock). A stray `pnpm install` leaves
 # a second, competing lockfile plus a pnpm-workspace.yaml behind; neither should

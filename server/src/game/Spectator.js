@@ -17,6 +17,7 @@ class Spectator {
     this.viewportEntityIds = [];
 
     this.isSpectating = false;
+    this.followNeuralPlayer = false;
     this.initialized = false;
     this.duration = 5;
     this.distance = 2000;
@@ -58,6 +59,15 @@ class Spectator {
     const { player } = this.client;
 
     if (this.isSpectating) {
+      const neuralPlayer = this.followNeuralPlayer && this.game.map.neuralPlayerBot;
+      if (neuralPlayer && !neuralPlayer.removed && neuralPlayer.shape) {
+        this.shape.x = neuralPlayer.shape.x;
+        this.shape.y = neuralPlayer.shape.y;
+        this.startX = this.toX = this.shape.x;
+        this.startY = this.toY = this.shape.y;
+        this.initialized = true;
+        return;
+      }
       this.timer.update(dt);
       if (this.timer.finished || !this.initialized) {
         this.updatePoint();

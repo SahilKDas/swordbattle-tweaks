@@ -396,12 +396,26 @@ class Game {
     if (client.fullSync) {
       client.fullSync = false;
       data.fullSync = true;
-      data.selfId = entity.id;
+      const viewedBot = client.botView && this.map.neuralPlayerBot;
+      data.selfId = viewedBot && !viewedBot.removed ? viewedBot.id : entity.id;
       data.entities = this.getAllEntities(entity);
       data.globalEntities = this.globalEntities.getAll();
     } else {
       data.entities = this.getEntitiesChanges(entity);
       data.globalEntities = this.globalEntities.getChanges();
+    }
+    // Global player state is intentionally lightweight for the minimap. A
+    // dedicated bot viewer needs the complete player and sword entities even
+    // if viewport/global deduplication would otherwise omit either one.
+    if (client.botView) {
+      const neuralPlayer = this.map.neuralPlayerBot;
+      if (neuralPlayer && !neuralPlayer.removed) {
+        data.entities = data.entities || {};
+        data.entities[neuralPlayer.id] = neuralPlayer.state.get();
+        if (neuralPlayer.sword && !neuralPlayer.sword.removed) {
+          data.entities[neuralPlayer.sword.id] = neuralPlayer.sword.state.get();
+        }
+      }
     }
     // Delete empty entities object so that we don't send empty payload.
     if (!data.entities || !hasOwnProperties(data.entities)) {

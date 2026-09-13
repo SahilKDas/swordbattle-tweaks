@@ -70,8 +70,11 @@ class Socket {
   connect(address: string, onOpen: any, onMessage: any, onClose: any) {
     let authSecret = '';
     try { authSecret = window.localStorage.getItem('secret') || ''; } catch (e) {}
-    const sep = address.includes('?') ? '&' : '?';
-    const endpoint = `${protocol}${address}${authSecret ? `${sep}secret=${encodeURIComponent(authSecret)}` : ''}`;
+    const params = new URLSearchParams();
+    if (authSecret) params.set('secret', authSecret);
+    if (window.location.pathname.replace(/\/+$/, '') === '/botv') params.set('botv', '1');
+    const separator = address.includes('?') ? '&' : '?';
+    const endpoint = `${protocol}${address}${params.size ? `${separator}${params}` : ''}`;
     this.onMessage = onMessage;
 
     if (this.socket !== null) {

@@ -29,6 +29,7 @@ const Chest = require('./entities/Chest');
 const Coin = require('./entities/Coin');
 const Token = require('./entities/Token');
 const PlayerAI = require('./entities/PlayerBot');
+const NeuralPlayerAI = require('./entities/NeuralPlayerBot');
 const WolfMob = require('./entities/mobs/Wolf');
 const CatMob = require('./entities/mobs/Cat');
 const BunnyMob = require('./entities/mobs/Bunny');
@@ -68,6 +69,12 @@ class GameMap {
     this.coinsCount = map.coinsCount !== undefined ? map.coinsCount : 100;
     this.chestsCount = map.chestCount !== undefined ? map.chestCount : 150;
     this.aiPlayersCount = map.aiPlayersCount !== undefined ? map.aiPlayersCount : 10;
+    this.neuralPlayerBot = null;
+    this.neuralPlayerBots = { one: null, two: null };
+    this.gauntletCoinStages = [50, 5000, 20000, 50000];
+    this.gauntletStage = 0;
+    this.gauntletStageElapsed = 0;
+    this.gauntletStageDuration = 75;
 
     this.captureZoneTimer = new Timer(0, 30, 60);
     this.activeCaptureZones = [];
@@ -108,8 +115,9 @@ class GameMap {
     }
     console.log('spawning', this.aiPlayersCount, 'AI bots');
     for (let i = 0; i < this.aiPlayersCount; i++) {
-      this.spawnPlayerBot();
+      this.spawnPlayerBot(i === 0 ? 'one' : i === 1 ? 'two' : null);
     }
+    this.linkNeuralGauntlet();
   }
 
   update(dt) {
@@ -127,8 +135,12 @@ class GameMap {
       }
     }
 
+    this.ensureNeuralPlayerBots();
+    this.updateNeuralGauntlet(dt);
+
     if(this.game.players.size < this.aiPlayersCount) {
-      for (let i = 0; i < this.aiPlayersCount - this.game.players.size; i++) {
+      const missing = this.aiPlayersCount - this.game.players.size;
+      for (let i = 0; i < missing; i++) {
         this.spawnPlayerBot();
       }
     }
@@ -186,13 +198,87 @@ class GameMap {
     }
   }
 
-  spawnPlayerBot() {
-    this.addAI({
+  spawnPlayerBot(neuralProfile = null) {
+    const neural = neuralProfile === 'one' || neuralProfile === 'two';
+    return this.addAI({
       type: Types.Entity.Player,
-      name: `${helpers.randomNickname()}`,
+      name: neuralProfile === 'two' ? 'littlehankeyTWO'
+        : neuralProfile === 'one' ? 'littlehankeyONE' : `${helpers.randomNickname()}`,
       isPlayer: true,
+      neural,
+      neuralProfile,
       respawnTime: [10, 30],
     });
+  }
+
+  ensureNeuralPlayerBots() {
+    if (this.aiPlayersCount <= 0) return null;
+    for (const profile of ['one', 'two']) {
+      const bot = this.neuralPlayerBots[profile];
+      if (!bot || bot.removed || !this.game.players.has(bot)) {
+        this.neuralPlayerBots[profile] = this.spawnPlayerBot(profile);
+      }
+    }
+    this.neuralPlayerBot = this.neuralPlayerBots.two;
+    this.linkNeuralGauntlet();
+    return this.neuralPlayerBot;
+  }
+
+  ensureNeuralPlayerBot() {
+    return this.ensureNeuralPlayerBots();
+  }
+
+  linkNeuralGauntlet() {
+    const one = this.neuralPlayerBots.one;
+    const two = this.neuralPlayerBots.two;
+    if (!one || !two || one.removed || two.removed) return;
+    one.gauntletOpponent = two;
+    two.gauntletOpponent = one;
+  }
+
+  positionGauntletBot(bot, profile) {
+    if (!bot || !this.safezone || !this.safezone.shape) return;
+    const offset = this.safezone.shape.radius + 450;
+    bot.shape.x = this.safezone.shape.x + offset;
+    bot.shape.y = this.safezone.shape.y + (profile === 'two' ? 700 : -700);
+    if (bot.velocity) {
+      bot.velocity.x = 0;
+      bot.velocity.y = 0;
+    }
+  }
+
+  applyGauntletStage(bot, profile, resetPosition = false) {
+    if (!bot || bot.removed) return;
+    const targetCoins = this.gauntletCoinStages[this.gauntletStage];
+    const currentCoins = bot.levels ? bot.levels.coins : 0;
+    if (bot.levels && currentCoins < targetCoins) {
+      bot.levels.addCoins(targetCoins - currentCoins);
+      bot.checkUpgrades();
+    }
+    if (resetPosition) this.positionGauntletBot(bot, profile);
+  }
+
+  updateNeuralGauntlet(dt) {
+    const one = this.neuralPlayerBots.one;
+    const two = this.neuralPlayerBots.two;
+    if (!one || !two || one.removed || two.removed) return;
+    this.applyGauntletStage(one, 'one');
+    this.applyGauntletStage(two, 'two');
+
+    this.gauntletStageElapsed += dt;
+    if (this.gauntletStageElapsed < this.gauntletStageDuration) return;
+    this.gauntletStageElapsed = 0;
+    this.gauntletStage = (this.gauntletStage + 1) % this.gauntletCoinStages.length;
+    // A completed cycle starts fresh contenders so evolution paths can be
+    // compared again from Level 2 rather than retaining Level 24 state.
+    if (this.gauntletStage === 0) {
+      one.remove('Gauntlet reset');
+      two.remove('Gauntlet reset');
+      return;
+    }
+    this.applyGauntletStage(one, 'one', true);
+    this.applyGauntletStage(two, 'two', true);
+    console.log(`[NEURAL_GAUNTLET] stage=${this.gauntletStage + 1}/${this.gauntletCoinStages.length} coins=${this.gauntletCoinStages[this.gauntletStage]}`);
   }
 
 spawnCoinsInShape(shape, totalCoinValue, droppedBy) {
@@ -255,16 +341,24 @@ spawnTokensInShape(shape, totalTokenValue, droppedBy) {
   addAI(objectData) {
     let ObjectClass;
     switch (objectData.type) {
-      case Types.Entity.Player: ObjectClass = PlayerAI; break;
+      case Types.Entity.Player: ObjectClass = objectData.neural ? NeuralPlayerAI : PlayerAI; break;
     }
 
     if (!ObjectClass) return console.warn('Unknown entity type: ', objectData);
 
     const entity = new ObjectClass(this.game, objectData);
+    if (objectData.neural && this.safezone && this.safezone.shape) {
+      this.positionGauntletBot(entity, objectData.neuralProfile);
+    }
     if (objectData.isPlayer) {
       this.game.players.add(entity);
     }
     this.game.addEntity(entity);
+    if (objectData.neural) {
+      this.neuralPlayerBots[objectData.neuralProfile] = entity;
+      if (objectData.neuralProfile === 'two') this.neuralPlayerBot = entity;
+      this.applyGauntletStage(entity, objectData.neuralProfile);
+    }
     return entity;
   }
 
